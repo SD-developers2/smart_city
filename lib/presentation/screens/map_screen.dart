@@ -282,15 +282,20 @@ class _MapScreenState extends State<MapScreen> {
   @override
   Widget build(BuildContext context) {
     // PROVIDERDAN MUROJAATLARNI OLISH
-    final complaints =
-        context.watch<AppProvider>().complaints;
+    final provider = context.watch<AppProvider>();
+
+    // ADMIN BARCHA MUROJAATLARNI,
+    // ODDIY FOYDALANUVCHI FAQAT O'Z MUROJAATLARINI KO'RADI.
+    final complaints = provider.isAdmin
+        ? provider.complaints
+        : provider.myComplaints;
 
     // FAQAT KOORDINATASI MAVJUD MUROJAATLAR
     final mappedComplaints = complaints.where(
       (complaint) =>
           complaint.latitude != null &&
           complaint.longitude != null,
-    );
+    ).toList();
 
     return Scaffold(
       appBar: AppBar(
@@ -472,8 +477,7 @@ class _MapScreenState extends State<MapScreen> {
                       separatorBuilder: (context, index) =>
                           const Divider(height: 1),
                       itemBuilder: (context, index) {
-                        final place =
-                            _searchResults[index];
+                        final place = _searchResults[index];
 
                         return ListTile(
                           leading: const Icon(
@@ -486,8 +490,7 @@ class _MapScreenState extends State<MapScreen> {
                                         .isNotEmpty ==
                                     true
                                 ? place['name'].toString()
-                                : place['display_name']
-                                    .toString(),
+                                : place['display_name'].toString(),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),

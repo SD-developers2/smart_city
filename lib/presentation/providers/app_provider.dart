@@ -17,6 +17,8 @@ class AppProvider extends ChangeNotifier {
   StreamSubscription<List<Complaint>>? _myComplaintsSubscription;
   StreamSubscription<User?>? _authSubscription;
 
+  int _authChangeVersion = 0;
+
   int _selectedIndex = 0;
   int get selectedIndex => _selectedIndex;
 
@@ -26,6 +28,10 @@ class AppProvider extends ChangeNotifier {
   List<Complaint> _myComplaints = [];
   List<Complaint> get myComplaints =>
       List.unmodifiable(_myComplaints);
+
+  // Admin barcha murojaatlarni, foydalanuvchi esa o'zinikini ko'radi.
+  List<Complaint> get visibleComplaints =>
+      _isAdmin ? _complaints : _myComplaints;
 
   bool _isLoading = true;
   bool get isLoading => _isLoading;
@@ -45,16 +51,17 @@ class AppProvider extends ChangeNotifier {
   String? _myComplaintsError;
   String? get myComplaintsError => _myComplaintsError;
 
-  int get totalComplaints => _complaints.length;
+  // Statistika barcha foydalanuvchilar uchun to'g'ri hisoblanadi.
+  int get totalComplaints => visibleComplaints.length;
 
   int get newComplaints =>
-      _complaints.where((e) => e.status == 'Yangi').length;
+      visibleComplaints.where((e) => e.status == 'Yangi').length;
 
   int get pendingComplaints =>
-      _complaints.where((e) => e.status == 'Jarayonda').length;
+      visibleComplaints.where((e) => e.status == 'Jarayonda').length;
 
   int get completedComplaints =>
-      _complaints.where((e) => e.status == 'Yakunlangan').length;
+      visibleComplaints.where((e) => e.status == 'Yakunlangan').length;
 
   AppProvider() {
     _authSubscription = _auth.authStateChanges().listen(
@@ -62,10 +69,15 @@ class AppProvider extends ChangeNotifier {
     );
   }
 
-  // Foydalanuvchi tizimga kirgan yoki chiqganini tekshirish
+  // Foydalanuvchi holati o'zgarganda barcha oqimlarni qayta ulash.
   Future<void> _handleAuthChange(User? user) async {
-    await _complaintSubscription?.cancel();
-    await _myComplaintsSubscription?.cancel();
+    final version = ++_authChangeVersion;
+
+    await _cancelSubscriptions();
+
+    // Agar shu vaqt ichida yangi auth hodisasi kelgan bo'lsa,
+    // eski hodisa davom etmasin.
+    if (version != _authChangeVersion) return;
 
     _complaints = [];
     _myComplaints = [];
@@ -74,7 +86,9 @@ class AppProvider extends ChangeNotifier {
     _myComplaintsError = null;
 
     _isAdmin = false;
-    _isLoading = true;
+    _selectedIndex = 0;
+
+    _isLoading = user != null;
     _isMyComplaintsLoading = user != null;
     _isAdminLoading = user != null;
 
@@ -88,9 +102,12 @@ class AppProvider extends ChangeNotifier {
 
     notifyListeners();
 
-    // Administrator ekanini tekshirish
     try {
-      _isAdmin = await checkAdminStatus();
+      final adminStatus = await checkAdminStatus();
+
+      if (version != _authChangeVersion) return;
+
+      _isAdmin = adminStatus;
 
       if (_isAdmin) {
         _listenToComplaints();
@@ -98,19 +115,30 @@ class AppProvider extends ChangeNotifier {
         _isLoading = false;
       }
     } catch (error) {
+      if (version != _authChangeVersion) return;
+
       _isAdmin = false;
       _isLoading = false;
       _errorMessage = error.toString();
     }
 
-    // Foydalanuvchining shaxsiy murojaatlari
+    if (version != _authChangeVersion) return;
+
     _listenToMyComplaints();
 
     _isAdminLoading = false;
     notifyListeners();
   }
 
-  // Administrator ekanini tekshirish
+  Future<void> _cancelSubscriptions() async {
+    await _complaintSubscription?.cancel();
+    await _myComplaintsSubscription?.cancel();
+
+    _complaintSubscription = null;
+    _myComplaintsSubscription = null;
+  }
+
+  // Administrator huquqini tekshirish.
   Future<bool> checkAdminStatus() async {
     final user = _auth.currentUser;
 
@@ -124,7 +152,7 @@ class AppProvider extends ChangeNotifier {
     return doc.exists && doc.data()?['enabled'] == true;
   }
 
-  // Barcha murojaatlarni administrator kuzatadi
+  // Admin uchun barcha murojaatlarni kuzatish.
   void _listenToComplaints() {
     _complaintSubscription = _repository.getComplaints().listen(
       (data) {
@@ -141,9 +169,10 @@ class AppProvider extends ChangeNotifier {
     );
   }
 
-  // Faqat joriy foydalanuvchining murojaatlari
+  // Oddiy foydalanuvchi uchun faqat o'z murojaatlarini kuzatish.
   void _listenToMyComplaints() {
-    _myComplaintsSubscription = _repository.getMyComplaints().listen(
+    _myComplaintsSubscription =
+        _repository.getMyComplaints().listen(
       (data) {
         _myComplaints = data;
         _isMyComplaintsLoading = false;
@@ -158,15 +187,17 @@ class AppProvider extends ChangeNotifier {
     );
   }
 
-  // Sahifalarni almashtirish
+  // Navigatsiya bo'limini almashtirish.
   void changeTab(int index) {
-    if (index < 0 || index > 5) return;
+    final maxIndex = _isAdmin ? 5 : 4;
+
+    if (index < 0 || index > maxIndex) return;
 
     _selectedIndex = index;
     notifyListeners();
   }
 
-  // Yangi murojaat qo'shish
+  // Yangi murojaat qo'shish.
   Future<void> addComplaint({
     required String title,
     required String category,
@@ -199,7 +230,7 @@ class AppProvider extends ChangeNotifier {
     }
   }
 
-  // Administrator murojaat holatini o'zgartiradi
+  // Faqat administrator murojaat holatini o'zgartiradi.
   Future<void> updateComplaintStatus({
     required String complaintId,
     required String newStatus,
@@ -220,23 +251,20 @@ class AppProvider extends ChangeNotifier {
       throw Exception('Noto‘g‘ri murojaat holati.');
     }
 
-    try {
-      await _repository.updateComplaintStatus(
-        complaintId: complaintId,
-        newStatus: newStatus,
-      );
-    } catch (error) {
-      _errorMessage = error.toString();
-      notifyListeners();
-      rethrow;
-    }
+    await _repository.updateComplaintStatus(
+      complaintId: complaintId,
+      newStatus: newStatus,
+    );
   }
 
   @override
   void dispose() {
+    _authChangeVersion++;
+
     _complaintSubscription?.cancel();
     _myComplaintsSubscription?.cancel();
     _authSubscription?.cancel();
+
     super.dispose();
   }
 }

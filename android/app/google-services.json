@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "367876305556",
+    "project_id": "smart-city-termez",
+    "storage_bucket": "smart-city-termez.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:367876305556:android:7bee730b55d56e22c17a81",
+        "android_client_info": {
+          "package_name": "com.example.smart_city"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD0BNYAa__KmrPGBraaBdA1IiuuYIiMajk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
